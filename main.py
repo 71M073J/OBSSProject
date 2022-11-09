@@ -2,13 +2,14 @@ import math
 
 from scipy import ndimage
 import wfdb
-import torch
+#import torch
 import numpy as np
+import numpy.lib.stride_tricks as stt
 import matplotlib.pyplot as plt
 import time
 fs = 250
 rec = wfdb.rdrecord("./long-term-st-database-1.0.0/s20011")
-sig = rec.p_signal[:, 0][0:250 * 5]
+sig = rec.p_signal[:, 0][0:1250]#0:250 * 60 * 60]
 
 b1 = 0.025 * fs
 b2 = 0.06 * fs
@@ -45,30 +46,45 @@ second_order_diff = np.convolve(sig,np.array((-1, 2, -1)), mode="same")
 c1 = 0.55
 x2n = second_order_diff
 sn = r_peaks * (sig + c1 * x2n)
-plt.plot(sn)
+plt.plot(sn, c="red")
+plt.plot(x2n, c="green")
+plt.plot(sig, c="magenta")
 print(len(sn))
 cands = []
 #TODO OPTIMIZE THIS WIHT NUMPY
 start_t = time.time()
 maxl = len(sig) - 1
-sn[np.take(sn, )]
-for k, i in enumerate(sn):
-    fail = False
-    r = int(np.floor(fs * 0.2 + 0.5))
-    if (np.abs(sn[k]) < np.abs(sn[np.clip(int(i - r), a_min=0, a_max=maxl):np.clip(int(i + r), a_min=0, a_max=maxl)])).any():
-        fail = True
-    if not fail:
-        cands.append(k)
+r = int(np.floor(fs * 0.2 + 0.5))
+np.arange(len(sn))
 
+#TODO mogoče loop do r da zračunamo vse offsete?
+cands2 =[]
+#np.abs(sn) < np.abs(sn - )
+#np.where()
+f = (np.abs(sn[r:-r]) < stt.sliding_window_view(np.abs(sn), 2 * r + 1).T).sum(axis=0)
+cands = np.arange(r, len(f) + r)[f == 0]
+#f = f.sum(axis=0)
+#css = [[] for i in sn]
+#for k, i in enumerate(sn):
+#    fail = False
+#    if not (np.abs(sn[k]) < np.abs(sn[np.clip(int(k - r), a_min=0, a_max=maxl):np.clip(int(k + r + 1), a_min=0, a_max=maxl)])).any():
+#        cands2.append(k)
+#    css[k].append(
+#        np.abs(sn[k]) < np.abs(sn[
+#                               np.clip(int(k - r), a_min=0, a_max=maxl):
+#                               np.clip(int(k + r), a_min=0, a_max=maxl)]))
 
+asadasdasda = 0
 
-end_t = time.time()
-print(f"time elapsed for {len(sig)/fs} sec: ", end_t - start_t)
+end_t = time.time() + 1e-6
+print(f"time elapsed for {len(sig)/fs} sec: ", end_t - start_t, f" speed {(len(sig)/fs)/(end_t - start_t)}s/s")
 #TODO baseline extraction??? kaj je to, what do i do
 #TODO MORE PREPROCESSING - we require accurate candidates
-final = r_candidates
+#print(r_candidates, cands)
+#final = r_candidates
 candidates = np.arange(len(sig))[cands]
-final = set(final).intersection(set(candidates))
+final = set(r_candidates).intersection(set(cands))
+final = cands
 #final = [r_candidates[0]]
 #for i in range(1, len(r_candidates)):
 #    if r_candidates[i] > final[-1] + fs/5:
@@ -77,7 +93,8 @@ final = set(final).intersection(set(candidates))
 #print(sig)
 #print(np.diff(sig))
 #print(np.diff(np.diff(sig)))
-print(final)
+#final = cands + r + 1
+#print(final)
 plt.plot(r_peaks)
 #plt.plot(second_order_diff)
 #plt.plot(sig)
@@ -101,14 +118,14 @@ print("pre-fft")
 wave = np.fft.fft(sig)
 print(("post-fft"))
 #plt.plot(np.arange(len(wave)), np.real(wave))
-plt.plot(np.fft.fftfreq(wave.size, 1 / fs), wave.real)
+#plt.plot(np.fft.fftfreq(wave.size, 1 / fs), wave.real)
 # plt.plot(range(len(wave)), np.angle(wave), c="orange")
 #plt.plot(range(len(wave)), np.imag(wave), c="red", alpha=0.3)
-plt.xlim(0)
+#plt.xlim(0)
 print("post-plot")
-plt.show()
+#plt.show()
 # print(vars(rec))
-print()
+#print()
 # wfdb.rdrecord()
 # BRUH
 # wtf is dduis
