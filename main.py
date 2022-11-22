@@ -9,12 +9,28 @@ import numpy as np
 import numpy.lib.stride_tricks as stt
 import matplotlib.pyplot as plt
 import time
+from scipy.signal import firwin, firwin2, freqz
+import json
 
 
-
-
-def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
+def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False, name="default",
+           maxbeta=2.0, minT=0.5, maxT=1.0, signum=0, annotate=False):
     #print(len(sig))
+    #TODO BASELINE EXTRACTION
+    # HIGH_PASS FILTER
+    # FIR FILTER
+    # cutoff okoli 0.8 Hz
+    t0 = time.time()
+    cutoff_Hz = 0.8
+    nyq_freq = fs / 2
+    fir_filter_highpass08 = firwin(1001, cutoff_Hz/nyq_freq, pass_zero="highpass")
+    #plt.plot(sig)
+    sig = np.convolve(sig, fir_filter_highpass08, mode="same")
+    sig -= np.mean(sig)
+    #plt.show()
+    print(f"Baseline Extraction duration:{time.time() - t0} seconds")
+    #quit()
+    t1 = time.time()
     b1 = 0.025 * fs
     b2 = 0.06 * fs
     c = 2 * (b2 - b1) / (2 * b1 + 1)
@@ -35,6 +51,7 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
     # test = filt#TODO a bomo LoG uporablal al ne
     # r_peaks = np.convolve(sig, filt)
     r_peaks = np.convolve(sig, test, mode="same")
+    print(f"LoG filtering duration: {time.time() - t1} seconds.")
     # plt.plot(r_peaks)
     # plt.plot(r_peaks)
     # plt.plot(r_peaks2)
@@ -64,6 +81,7 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
     abssn = np.abs(sn)
     f = (np.abs(sn[r:-r]) < stt.sliding_window_view(abssn, 2 * r + 1).T).sum(axis=0)
     cands = np.arange(r, len(f) + r)[f == 0]
+    print(f"Candidate filtering 1 duration: {time.time() - start_t} seconds.")
     # f = f.sum(axis=0)
     # css = [[] for i in sn]
     # for k, i in enumerate(sn):
@@ -77,6 +95,7 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
     # np.argpartition([...])#maybe celo hitreje da gremo čez sn namesto čez kandidate
     # s5 = np.argpartition(stt.sliding_window_view(np.abs(sn), 10 * fs), -5,axis=1)[:,-5:]
     # NVM this array is 384 GiB ()
+    t3 = time.time()
     w1 = np.zeros(len(cands))
     w2 = np.zeros(len(cands))
     taus = np.arange(1, 6).astype(np.float32)[::-1]
@@ -114,6 +133,7 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
             w2[ind] = np.abs(((ms[0] - ms[2]) / 2) / ie - np.floor(0.5 + (ms[0] - ms[1]) / ie))
         else:
             w2[ind] = np.abs((ms[0] - ms[1]) / ie - np.floor(0.5 + (ms[0] - ms[1]) / ie))
+    print(f"Adaptive threshold filtering duration: {time.time() - t3} seconds.")
     if search:
         w1save = np.copy(w1)
         w2save = np.copy(w2)
@@ -121,10 +141,13 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
         maxscore = len(true_beats)
         true = set(true_beats)
         maxs = 0
-        a = np.arange(0.4, 0.8, 0.05)
-        b = np.arange(0.5, 2.0, 0.1)
-        c = np.arange(0.5, 2.0, 0.1)
+        maxvals = 0
+        a = np.arange(0.0, 0.4, 0.05)
+        b = np.arange(0., maxbeta, 0.25)
+        c = np.arange(0., maxbeta, 0.25)
         ims = np.zeros((len(a), len(b), len(c)))
+        t_s = time.time()
+        maxvalslist = []
         for i1, T in enumerate(a):
             for i2, beta1 in enumerate(b):
                 for i3, beta2 in enumerate(c):
@@ -158,29 +181,41 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
                     print(f"True Positive: {tp/maxscore}, \nFalse Positive:"
                           f" {fp/maxscore} \nFalse Negative: {fn/maxscore}")
                     print("params", T, beta1, beta2,"maxs", maxs, len(adapted_cands), maxscore)
-                    print(tp/(fp+1), tp/(fp+1)/maxscore)
-                    ims[i1,i2,i3] = (tp/(fp + 1))/maxscore
-                    if tp/(fp + 1) > maxs:
-                        maxs = tp/(fp + 1)
+                    #if tp/(fp + 1) > maxs:
+                    #    maxs = tp/(fp + 1)
+                    #    maxvals = (T, beta1, beta2)
+                    fs = tp / (tp + 0.5 * (fp + fn))
+                    ims[i1, i2, i3] = fs
+                    print("F-score:", fs)
+                    maxvalslist.append((fs,(T, beta1, beta2)))
+                    if fs > maxs:
+                        maxs = fs
                         maxvals = (T, beta1, beta2)
-        print(maxs/maxscore, maxvals)
+        maxvalslist = [x[1] for x in maxvalslist if x[0] == maxs]
+        print(maxs, maxvals)
+        print(f"Search duration: {time.time() - t_s} seconds.")
+        with open("heartbeat_search.json", "rb") as f:
+            dicc = json.load(f)
+            dicc[name + str(signum)] = maxvals
+            dicc[name + str(signum) + "f_score"] = maxs
+            dicc[name + str(signum) + "maxvals"] = maxvalslist
+        with open("heartbeat_search.json", "w") as f:
+            json.dump(dicc, f)
         fig, ax = plt.subplots()
         anims = []
         for h in ims:
-            im = ax.imshow(h, animated=True)
+            im = ax.imshow(h, animated=True, vmin=ims.min(), vmax=ims.max())
             anims.append([im])
-        ani = animation.ArtistAnimation(fig, anims, interval=100, blit=True,
+        ani = animation.ArtistAnimation(fig, anims, interval=500, blit=True,
                                         repeat_delay=1000)
-        ani.save("scam.mp4")
-        plt.show()
+        ani.save(f"./{name}{signum}.mp4")
+        #plt.show()
     else:
         w1 *= T
         w2 = beta1 + beta2 * w2
         adaptive_threshold = w1 * w2
         adapted_cands = cands[adaptive_threshold < np.abs(sn[cands])]
         end_t = time.time() + 1e-6
-        print(f"time elapsed for {len(sig) / fs} sec: ", end_t - start_t,
-              f" speed {(len(sig) / fs) / (end_t - start_t)}s/s")
         cand = set(adapted_cands)
         tp = 0
         fp = 0
@@ -209,10 +244,16 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
         print(f"True Positive: {tp / maxscore}, \nFalse Positive:"
               f" {fp / maxscore} \nFalse Negative: {fn / maxscore}")
         print("params", T, beta1, beta2, "maxs", maxs, len(adapted_cands), maxscore)
-        print(tp / (fp + 1), tp / (fp + 1) / maxscore)
-        if tp / (fp + 1) > maxs:
-            maxs = tp / (fp + 1)
-            maxvals = (T, beta1, beta2)
+        fs = tp / (tp + 0.5 * (fp + fn))
+        print("F-score:", fs)
+        print(f"time elapsed for {len(sig) / fs} sec: ", end_t - t0,
+              f" speed {(len(sig) / fs) / (end_t - start_t)}s/s")
+        sensitivity = tp / (tp + fn)
+        pos_pred = tp / (tp + fp)
+        if annotate:
+            with open("det/" + name + ".det", "w") as f:
+                for i in adapted_cands:
+                    f.write(i)
 
     #print(adaptive_threshold, np.abs(sn[cands]))
     #print(len(cands), "dolžina kandidatov,")
@@ -221,14 +262,18 @@ def detect(sig, true_beats, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=False):
 
 if __name__ == "__main__":
     fs = 250
-    filename = "./long-term-st-database-1.0.0/s20021"
-    anns = wfdb.rdann(filename, "atr")
-    true_beats = anns.sample[anns.sample < 1250]
-    true_beats = anns.sample
-    rec = wfdb.rdrecord(filename)
-    sig = rec.p_signal[:, 0][:]  # 0:250 * 60 * 60]
-    #detect(sig, true_beats, search=True)
-    detect(sig, true_beats, T=0.75, beta1=1.1, beta2=1.9)
+    for h in range(1,10):
+        filename = f"./long-term-st-database-1.0.0/s200{h}1"
+        anns = wfdb.rdann(filename, "atr")
+        true_beats = anns.sample[anns.sample < 1250]
+        true_beats = anns.sample
+        rec = wfdb.rdrecord(filename)
+
+        for i in range(1):
+            sig = rec.p_signal[:, i][:]  # 0:250 * 60 * 60]
+            #detect(sig, true_beats, search=True, name=filename.split("/")[-1], maxbeta=2.6, signum=i)
+
+            detect(sig, true_beats, T=0.15, beta1=1., beta2=1.)
     #detect(sig, true_beats, T=0.68, beta1=0.6, beta2=1.8)
     #print(f"T: {T}, b1: {b1}, b2: {b2}, max score: {maxs}")
 
