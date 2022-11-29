@@ -1,3 +1,4 @@
+import argparse
 import collections
 import math
 import os
@@ -56,7 +57,6 @@ def detect(sig, true_beats, signum, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=
     test = 6 * fs * ndimage.gaussian_laplace(-impulse, b1)  # TESTNI FILTER ZA LoG
     # plt.plot(range(-len(filt)//2,len(filt)//2,1),test)
     # plt.show()
-    # test = filt#TODO a bomo LoG uporablal al ne
     # r_peaks = np.convolve(sig, filt)
     r_peaks = np.convolve(sig, test, mode="same")
     if verbose:
@@ -260,11 +260,12 @@ def detect(sig, true_beats, signum, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=
 
 
 if __name__ == "__main__":
-    # TODO use minimiser instead of search
+    parser = argparse.ArgumentParser()
+    parser.add_argument("db", type=str)
+    args = parser.parse_args()
     fs = 250
-    prefix = "E:/Users/timotej999/Downloads/long-term-st-database-1.0.0/"
     results = []
-    db = f"{prefix}./long-term-st-database-1.0.0/"
+    db = args.db
     done = set()
     for p in os.listdir(db):
         if os.path.isdir(p):
