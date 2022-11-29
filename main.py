@@ -28,7 +28,7 @@ def detect(sig, true_beats, signum, T=0.7, beta1=1.0, beta2=1.0, fs=250, search=
     fir_filter_highpass08 = firwin(1001, cutoff_Hz / nyq_freq, pass_zero="highpass")
     if plot and len(sig) > fs * 60 * 5:
         print("Will not plot over 5 min of data; setting plot to false.")
-        # plot = False
+        plot = False
     if plot:
         plt.plot(sig, c="purple")
     sig = np.convolve(sig, fir_filter_highpass08, mode="same")
@@ -303,4 +303,4 @@ if __name__ == "__main__":
         for i in results:
             print(f"{','.join([str(x) for x in i])}", file=f)
     # detect(sig, true_beats, T=0.68, beta1=0.6, beta2=1.8)
-    # print(f"T: {T}, b1: {b1}, b2: {b2}, max score: {maxs}")
+    # print(f"T: {T}, b1: {b1}, b2: {b2}, max score: {maxs}"
